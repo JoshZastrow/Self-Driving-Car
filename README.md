@@ -1,3 +1,4 @@
+
 # Self-Driving-Car
 
 Hello there. 
@@ -6,3 +7,6 @@ This is a personal repository of mini-projects I've worked on (/am working on) r
 
 ### Current Project (As of 4/24/2017)
 Finding Lane Lines in Road Images
+
+### Current Project (As of 8/11/2017)
+Building a Convolutional Neural Network to predict Steering Angles from Udacities SDC dataset. This will be a baseline for comparing a novel data preprocessing technique.
