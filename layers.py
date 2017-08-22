@@ -10,39 +10,50 @@ Note: Shape of Images are (num_train, height, width, channels)
 from keras import backend as K
 from keras.engine.topology import Layer
 import numpy as np
+import theano.tensor as T
 
+class LRN(Layer):
+    
+    def __init__(self, alpha=0.0001, k=1, beta=0.75, n=5, **kwargs):
+        self.alpha = alpha
+        self.k = k
+        self.beta = beta
+        self.n = n
+        super(Layer, self).__init__(**kwargs)
+        
+    def call(self, x, mask=None):
+        N, H, W, C = x.shape
+        half_n = self.n // 2  # half the local region
+        input_sqr = x ** 2
+        extra_channels = np.zeros(shape=N, H, W, C + 2*half_n)
+        # Set the center of the extra channels padded imput to be the squared
+        # input
+        input_sqr = T.set_subtensor(extra_channels[:, :, :, half_n:half_n + C],
+                                    input_sqr)
+        
+        scale = self.k  # offset for scale
+        norm_alpha = self.alpha / self.n
+        
+        for i in range(self.n):
+            scale += self.alpha * input_sqr[:, :, :, i : i + C]
+        
+        scale = scale ** self.beta
+        x = x / scale
+        return x
+    
+        
 class Convolution_layer(Layer):
 
     """
     A keras implementation of the forward pass for a convolutional layer.
-    The input consists of N data points, each with C chs, height H and width
-    W. We convolve each input with F different filters, where each filter spans
-    all C chs and has height HH and width HH.
-
-
 
     Input:
         nb_filter: Number of convolution filters to use.
         nb_row: Number of rows in the convolution kernel.
         nb_col: Number of columns in the convolution kernel
-
-    - conv_param: A dictionary with the following keys:
-
-        - 'stride': The number of pixels between adjacent receptive fields in the
-
-           horizontal and vertical directions.
-
-        - 'pad': The number of pixels that will be used to zero-pad the input.
-
-
-
-    Returns a tuple of:
-
-    - out: Output data, of shape (N, F, H', W') where H' and W' are given by
-
-        H' = 1 + (H + 2 * pad - HH) / stride
-
-        W' = 1 + (W + 2 * pad - WW) / stride
+        stride: The number of pixels between adjacent receptive fields in the
+        horizontal and vertical directions.
+        pad: The number of pixels that will be used to zero-pad the input.
 
 
     """
