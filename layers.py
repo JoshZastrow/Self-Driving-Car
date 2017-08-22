@@ -41,6 +41,31 @@ class LRN(Layer):
         x = x / scale
         return x
     
+    def get_config(self):
+
+        config = {"alpha": self.alpha,
+                  "k": self.k,
+                  "beta": self.beta,
+                  "n": self.n}
+        base_config = super(LRN, self).get_config()
+
+        return dict(list(base_config.items()) + list(config.items()))
+    
+
+class PoolHelper(Layer):
+
+
+    def __init__(self, **kwargs):
+        super(PoolHelper, self).__init__(**kwargs)
+
+    def call(self, x, mask=None):
+        return x[:, 1:, 1:, :]
+
+
+    def get_config(self):
+        config = {}
+        base_config = super(PoolHelper, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
         
 class Convolution_layer(Layer):
 
