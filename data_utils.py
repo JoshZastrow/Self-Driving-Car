@@ -1,6 +1,12 @@
 import pandas as pd
 import numpy as np
 from scipy import misc
+import matplotlib.pyplot as plt
+
+
+plt.rcParams['figure.figsize'] = (20.0, 16.0) # set default size of plots
+plt.rcParams['image.interpolation'] = 'nearest'
+plt.rcParams['image.cmap'] = 'gray'
 
 
 def load_data_batch(datasets='HMB_1', batch=50, val_percent=.2,
@@ -23,7 +29,7 @@ def load_data_batch(datasets='HMB_1', batch=50, val_percent=.2,
     Y_valid : (num_valid, labels) array
     """
 
-    folder = "datasets/" + datasets + "/output/"
+    folder = "../Car/datasets/" + datasets + "/output/"
     file = folder + "interpolated.csv"
 
     # Starting with just center camera
@@ -93,7 +99,7 @@ def load_commai_data(log_file, cam_file):
     Returns
     -------
         log: Pandas Dataframe of log file, indexed with cam1_ptr
-        cam: PyTables CArray of shape (Frame, Channel, Frame_width, Frame_height)
+        cam: PyTables CArray of shape (frame, height, width, channels))
 
     """
     log_store = pd.HDFStore(log_file)
@@ -113,9 +119,16 @@ def load_commai_data(log_file, cam_file):
 
     # Average the log sensors in a Dataframe, create cam 4D array
     log = pd.DataFrame(data_dic).groupby('cam1_ptr').mean()
-    cam = cam_store.root.X[:].transpose(0, 2, 3, 1).astype("float")
+    cam = cam_store.root.X[:]
 
     return log, cam
 
 
-
+if __name__ == "__main__":
+    
+    xt, yt, xv, yv = load_data_batch(batch=40, val_percent=.25)
+    
+    plt.axis('off')
+    plt.suptitle("Sample Center Camera Image", fontsize=38)
+    plt.imshow(np.uint8(xt[20]))
+    print('\nImage Shape:', xt[1].shape)
