@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from scipy import misc
 import matplotlib.pyplot as plt
+import os
 
 
 plt.rcParams['figure.figsize'] = (20.0, 16.0) # set default size of plots
@@ -9,7 +10,7 @@ plt.rcParams['image.interpolation'] = 'nearest'
 plt.rcParams['image.cmap'] = 'gray'
 
 
-def load_data_batch(datasets='HMB_1', batch=50, val_percent=.2,
+def load_data_batch(datasets='HMB_1', batch=100, val_percent=.2,
                     shuffle=False):
     """
     loads in images as features, steering angle as label
@@ -17,7 +18,7 @@ def load_data_batch(datasets='HMB_1', batch=50, val_percent=.2,
     Inputs
     ----
     datasets : subfolder refering to bag folder (i.e 'HMB_ 1')
-    batch : size of dataset to be read in
+    batch : total number of samples to be read in
     val_percent: percent of batch to be assigned to validation (i.e 0.2)
     shuffle : TO DO -> shuffle dataset before returning
 
@@ -29,9 +30,13 @@ def load_data_batch(datasets='HMB_1', batch=50, val_percent=.2,
     Y_valid : (num_valid, labels) array
     """
 
+    # Dataset folder
     folder = "../Car/datasets/" + datasets + "/output/"
     file = folder + "interpolated.csv"
 
+    assert os.path.isdir(folder), 'Image Dataset folder not found'
+    assert os.path.isfile(file), 'interpolated dataset not found'
+    
     # Starting with just center camera
     dataset = pd.read_csv(file)
     dataset = dataset[dataset['frame_id'] == 'center_camera']
@@ -124,11 +129,56 @@ def load_commai_data(log_file, cam_file):
     return log, cam
 
 
+def create_data_generator():
+    """
+    Creates a data generator that can flow data from a directory
+    instead of bringing it all into memory. 
+    reference documents can be found here:
+        https://keras.io/preprocessing/image/
+        
+    """
+    
+    dataflow = {}
+    
+
+    train_generator = ImageDataGenerator(
+                        rescale=1./255,
+                        shear_range=0.2,
+                        zoom_range=0.2,
+                        horizontal_flip=True))
+
+    test_generator = ImageDataGenerator(rescale=1./255)
+        
+    data_flow['train'] = data_generator.flow_from_directory(
+                                            'data/imgs',
+                                            target_size=(150, 150),
+                                            batch_size=32,
+                                            class_mode='binary')
+    
+    data_flow['train'] = data_generator.flow_from_directory(
+                                        'data/train',
+                                        target_size=(150, 150),
+                                        batch_size=32,
+                                        class_mode='binary')
+    
+
+    return data_flow
+    
+    
 if __name__ == "__main__":
     
     xt, yt, xv, yv = load_data_batch(batch=40, val_percent=.25)
+    
+    print('\nData Loaded:\n
+          '\tX Train: {}\n'
+          '\tY Train: {}\n'
+          '\tX Valid: {}\n'
+          '\tY Valid: {}\n'.format(xt.shape, yt.shape, vx.shape, yv.shape)
+          )
     
     plt.axis('off')
     plt.suptitle("Sample Center Camera Image", fontsize=38)
     plt.imshow(np.uint8(xt[20]))
     print('\nImage Shape:', xt[1].shape)
+    
+    del xt, del yt, del xv, del yv
