@@ -38,14 +38,13 @@ def transfer_InceptionV3():
     
     # Create
     base_model = InceptionV3(include_top=False, 
-                           weights='imagenet',
-                           input_tensor=None,
-                           input_shape=(480, 640, 3))
-    
+                             weights='imagenet',
+                             input_tensor=None,
+                             input_shape=(480, 640, 3))
     for layer in base_model.layers:
         layer.trainable = False
         
-    # Add
+    # Add top layers
     top_layers = base_model.output
     top_layers = GlobalAveragePooling2D()(top_layers)
     top_layers = Dense(1024, activation='relu')(top_layers)
@@ -57,36 +56,21 @@ def transfer_InceptionV3():
     # Compile: Regression 
     model.compile(optimizer='rmsprop', loss='mean_squared_error')
     
-    return model
+    return model 
         
 if __name__ == "__main__":
 
     model = transfer_InceptionV3()
     
     # Load Data
-    X_train, Y_train, X_test, Y_test = load_data_batch()
+    data = load_udacity_data  (val_percent=0)
     
-    train_datagen = ImageDataGenerator(
-        rescale=1./255,
-        shear_range=0.2,
-        zoom_range=0.2,
-        horizontal_flip=True)
-    train_generator = train_datagen.flow_from_directory(
-        'data/train',
-        target_size=(150, 150),
-        batch_size=32,
-        class_mode='binary')
+    model.fit(x=data['X_train'], 
+              y=data['Y_train'], 
+              validation_split=0.2,
+              verbose=2,
+              nb_epoch=3)
     
-    
-    validation_generator = test_datagen.flow_from_directory(
-        'data/validation',
-        target_size=(150, 150),
-        batch_size=32,
-        class_mode='binary')
-    
-    test_datagen = ImageDataGenerator(rescale=1./255)
-    
-    model.fit(x=X_train, y=Y_train, epoch=3)
-    
-    score = model.evaluate(x=X_test, y=Y_test)
+    score = model.evaluate(x=data['X_valid'], y=data['Y_valid'])
+    print(score)
     
