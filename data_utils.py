@@ -1,17 +1,21 @@
+from __future__ import absolute_import
+from __future__ import print_function
+
+from keras.preprocessing.image import ImageDataGenerator
 import pandas as pd
 import numpy as np
 from scipy import misc
 import matplotlib.pyplot as plt
 import os
-
+import matplotlib.cbook as cbook
 
 plt.rcParams['figure.figsize'] = (20.0, 16.0) # set default size of plots
 plt.rcParams['image.interpolation'] = 'nearest'
 plt.rcParams['image.cmap'] = 'gray'
 
 
-def load_data_batch(datasets='HMB_1', batch=100, val_percent=.2,
-                    shuffle=False):
+def load_udacity_data(file_path='', img_dir='', batch=100, val_percent=.2,
+                    shuffle=False, rescale=True):
     """
     loads in images as features, steering angle as label
 
@@ -31,22 +35,25 @@ def load_data_batch(datasets='HMB_1', batch=100, val_percent=.2,
     """
 
     # Dataset folder
-    folder = "../Car/datasets/" + datasets + "/output/"
-    file = folder + "interpolated.csv"
-
-    assert os.path.isdir(folder), 'Image Dataset folder not found'
-    assert os.path.isfile(file), 'interpolated dataset not found'
+    if not file_path:
+        file = "../Car/datasets/HMB_1/output/interpolated.csv"
+        assert os.path.isfile(file), 'interpolated dataset not found'
     
+    if not img_dir:
+        img_dir = '../Car/datasets/HMB_1/output/'
+        assert os.path.isdir(img_dir)
+        
     # Starting with just center camera
     dataset = pd.read_csv(file)
     dataset = dataset[dataset['frame_id'] == 'center_camera']
 
     # Add directory path to dataset
-    dataset['filename'] = folder + dataset['filename']
+    dataset['filename'] = img_dir + dataset['filename']
 
     # Setup data placeholders
     assert max(dataset['width']) == min(dataset['width'])
     assert max(dataset['height']) == min(dataset['height'])
+    
     width = max(dataset['width'])
     height = max(dataset['height'])
     channels = 3
@@ -54,15 +61,16 @@ def load_data_batch(datasets='HMB_1', batch=100, val_percent=.2,
     if batch > dataset.shape[0]:
         batch = dataset.shape[0]
 
-    num_train = int(batch * (1 - val_percent))
-    num_valid = int(batch * (val_percent))
-
     X = np.zeros((batch, height, width, channels))
     Y = np.zeros((batch, ))
 
+    num_train = int(batch * (1 - val_percent))
+    num_valid = int(batch * (val_percent))
+    
     mask = range(num_train, num_train + num_valid)
     X_valid = X[mask]
     Y_valid = Y[mask]
+    
     mask = range(num_train)
     X_train = X[mask]
     Y_train = Y[mask]
@@ -88,7 +96,16 @@ def load_data_batch(datasets='HMB_1', batch=100, val_percent=.2,
 
         count += 1
 
-    return X_train, Y_train, X_valid, Y_valid
+    data = {'X_train': X_train,
+            'Y_train': Y_train,
+            'X_valid': X_valid,
+            'Y_valid': Y_valid}
+    
+    if rescale:
+        data['X_train'] /= 255
+        data['X_valid'] /= 255
+        
+    return data
 
 
 
@@ -129,56 +146,74 @@ def load_commai_data(log_file, cam_file):
     return log, cam
 
 
-def create_data_generator():
+class DataGenerator(ImageDataGenerator):
     """
-    Creates a data generator that can flow data from a directory
-    instead of bringing it all into memory. 
-    reference documents can be found here:
-        https://keras.io/preprocessing/image/
-        
+    A data generator object that flows data from selected source.
+    Initializes with parameters from Keras ImageDataGenerator.
     """
+    def __init__(self, *args, **kwargs):
+        ImageDataGenerator.__init__(self, *args, **kwargs)
+        self.iterator=None
     
-    dataflow = {}
-    
-
-    train_generator = ImageDataGenerator(
-                        rescale=1./255,
-                        shear_range=0.2,
-                        zoom_range=0.2,
-                        horizontal_flip=True))
-
-    test_generator = ImageDataGenerator(rescale=1./255)
+    def flow_from_csv(self, 
+                      csv_path=None,
+                      img_dir='', 
+                      batch_size=5, 
+                      target_size=(480, 640),
+                      col_headers=['angle']):
         
-    data_flow['train'] = data_generator.flow_from_directory(
-                                            'data/imgs',
-                                            target_size=(150, 150),
-                                            batch_size=32,
-                                            class_mode='binary')
-    
-    data_flow['train'] = data_generator.flow_from_directory(
-                                        'data/train',
-                                        target_size=(150, 150),
-                                        batch_size=32,
-                                        class_mode='binary')
-    
+        assert os.path.isfile(csv_path), 'Log file cannot be found'
+        assert os.path.isdir(img_dir), 'img directory cannot be found'
+        
+        # CSV Stores labels and filepath to image
+        reader = pd.read_csv(csv_path, 
+                             chunksize=batch_size)
+        
+        # Yield one set of images 
+        for batch in reader:
+            img_path = img_dir + batch['filename']
+            data = process_images(img_path, target_size, batch_size)
+                
+            labels = np.array([batch[h] for h in col_headers])
+            labels = labels.transpose(1, 0)
+            
+            yield data, labels
 
-    return data_flow
+
+def process_images(dir_list, target_size, batch_size):
     
+    images = np.zeros(shape=(batch_size, *target_size, 3))
+    
+    for i, line in enumerate(dir_list):
+        get_image = misc.imread(line, mode='RGB')
+        images[i] = get_image  #.resize(*target_size, 3)
+        
+    return images
     
 if __name__ == "__main__":
     
-    xt, yt, xv, yv = load_data_batch(batch=40, val_percent=.25)
-    
-    print('\nData Loaded:\n
-          '\tX Train: {}\n'
-          '\tY Train: {}\n'
-          '\tX Valid: {}\n'
-          '\tY Valid: {}\n'.format(xt.shape, yt.shape, vx.shape, yv.shape)
-          )
-    
-    plt.axis('off')
-    plt.suptitle("Sample Center Camera Image", fontsize=38)
-    plt.imshow(np.uint8(xt[20]))
-    print('\nImage Shape:', xt[1].shape)
-    
-    del xt, del yt, del xv, del yv
+    f = 1
+    reader = DataGenerator()
+    reader = reader.flow_from_csv(csv_path='../Car/datasets/HMB_1/output/interpolated.csv',
+                                 img_dir='../Car/datasets/HMB_1/output/')
+
+    for chunk in reader:
+        if f > 2: break
+        f += 1  
+      
+        fig, ax = plt.subplots(nrows=1, ncols=5, sharex=True, squeeze=True)
+        j = 0
+        for axis in ax:        
+            axis.set_title(chunk[1][j])
+            axis.imshow(np.uint8(chunk[0][j]))
+            axis.axis('off')
+            j += 1
+            
+        for i in range(5):
+            plt.subplot('15{}'.format(i + 1))
+            plt.imshow(np.uint8(chunk[0][i]))
+            plt.title = 'Steering Angle {}: {}'.format(i, chunk[1][i])
+            plt.axis('off')
+        plt.show()
+#    ax.axis('off')  # clear x- and y-axes
+#    plt.show()
