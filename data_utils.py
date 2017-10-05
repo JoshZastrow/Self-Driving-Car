@@ -156,31 +156,43 @@ class DataGenerator(ImageDataGenerator):
         self.iterator=None
     
     def from_csv(self, 
-                      csv_path=None,
-                      img_dir='', 
-                      batch_size=5, 
-                      target_size=(480, 640),
-                      col_headers='angle'):
+                 csv_path=None,
+                 img_dir='', 
+                 batch_size=5, 
+                 target_size=(480, 640),
+                 col_headers='angle'):
         
         assert os.path.isfile(csv_path), 'CSV Log file cannot be found'
         assert os.path.isdir(img_dir), 'Image directory cannot be found'
         
         # CSV Stores labels and filepath to image
-        reader = pd.read_csv(csv_path, 
-                             chunksize=batch_size)
+        reader = pd.read_csv(csv_path, chunksize=batch_size)
         
         # Yield one set of images 
         for batch in reader:
-            img_path = img_dir + batch['filename']
-            data = process_images(img_path, target_size, batch_size)
-            
-            
+            data = process_images(batch['filename'], target_size)
             labels = np.array(batch[col_headers])
             
             yield data, labels
 
 
-def process_images(dir_list, target_size, batch_size):
+def process_images(dir_list, target_size, img_dir=None):
+    """
+    Loads images from file, performs image processing (if any)
+    
+    inputs
+    ------
+    dir_list: list of image file paths
+    target_size: desired size of images
+    
+    returns
+    -------
+    images: np array of images
+    """
+    
+    img_dir = '../Car/datasets/HMB_1/output/' if not img_dir else img_dir
+    dir_list = img_dir + dir_list
+    batch_size = len(dir_list)
     
     images = np.zeros(shape=(batch_size, *target_size, 3))
     
@@ -193,32 +205,30 @@ def process_images(dir_list, target_size, batch_size):
     
 if __name__ == "__main__":
     
-    f = 1
     file_loc = '../Car/datasets/HMB_1/output/interpolated.csv'
+    i = 0
+        
+    f = 1
     reader = DataGenerator()
     reader = reader.from_csv(csv_path=file_loc,
                              img_dir='../Car/datasets/HMB_1/output/',
                              batch_size=30)
-    
-    
+    c = 5
     for chunk in reader:
-        if f > 5: break
+        if f > c: break
         f += 1
-        print('Generated batch {} of shape: {}'.format(f, chunk[0].shape))
-      
-        fig, ax = plt.subplots(nrows=1, ncols=5, sharex=True, squeeze=True)
+        fig, ax = plt.subplots(nrows=1, ncols=c, sharex=True, squeeze=True)
         j = 0
+        
         for axis in ax:        
             axis.set_title(chunk[1][j])
             axis.imshow(np.uint8(chunk[0][j]))
             axis.axis('off')
             j += 1
             
-        for i in range(5):
+        for i in range(c):
             plt.subplot('15{}'.format(i + 1))
             plt.imshow(np.uint8(chunk[0][i]))
             plt.title = 'Steering Angle {}: {}'.format(i, chunk[1][i])
             plt.axis('off')
         plt.show()
-    ax.axis('off')  # clear x- and y-axes
-    plt.show()
