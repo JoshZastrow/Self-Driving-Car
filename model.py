@@ -3,11 +3,12 @@ from data_utils import DataGenerator
 import numpy as np 
 import pandas as pd
 from keras import optimizers
-from keras.layers import Dense, Dropout, Flatten
+from keras.layers import Dense, Dropout, Flatten, MaxPooling2D
 from keras.models import Sequential
 from keras.applications import VGG16
 import csv
 from tables import open_file, Atom
+import time
 
 # Set a random seed so I can run the same code and get the same result
 np.random.seed(7)
@@ -38,26 +39,42 @@ flatten_5 (Flatten)              (None, 153600)        0           block5_pool[0
             data = list(reader)
             sample_size = len(data)
             
-    print('initializing data generator...')
+    print('initializing data generator...', end='')
     data = DataGenerator() 
     data = data.from_csv(csv_path=csv_file,
                          img_dir=img_folder,
                          batch_size=batch)
-    print('initializing model....')
+    
+    t1 = time.time()
+    print('{}seconds\ninitializing model... '
+          .format(round(t1 - t0, 2)), end='')
+    
     conv_base = VGG16(include_top=False, 
                       weights='imagenet', 
                       input_shape=(480, 640, 3))
-
+    
     model = Sequential()
     model.add(conv_base)
+    # model.add(MaxPooling2D(pool_size=(3, 4)))
     model.add(Flatten())
     
+
     i = 0
+    t2 = time.time()
     
-    print('Performing Feature Extraction:', end='')
+    print('{} seconds\n'
+          .format(round(t2 - t1, 2)))
+    print('\nModel Summary')
+    print('-------------')
+    print(model.summary())
+    print('\nPerforming Feature Extraction:\n')
     for inputs, y in data:
+        cur = time.time()
         feature_batch = model.predict(inputs)
-        print('batch {} through {} complete'.format(i, i + batch))
+        new = time.time()
+        print('\tbatch {} through {} complete ({} sec)'
+              .format(i, i + batch, round(new - cur, 2)))
+
         yield feature_batch, y
         
         i += batch
@@ -100,102 +117,70 @@ class TransferModel():
                verbose=2,
                nb_val_samples=100,
                validation_data=data_flow)
-        
-                
-class array_writer():
-    """
-    Constructs the pytable storage container for the data, then on 
-    each call stores the data in an array
-    """
-    def __init__(self, chunksize, dataset='HMB_1'):
-        self.fileh = open_file('VGG16/{}.h5'.format(dataset), mode = 'w')
-        self.root = self.fileh.root
-        self.c = chunksize
-        
-        if dataset not in self.root:
-            
-            self.HMB1_group = self.fileh.create_group(self.root, dataset)
-        
-            # feature_table = self.fileh.create_table(HMB1_group, 'features')
-            # label_table = self.fileh.create_table(HMB1_group, 'labels')
-            
-    def __call__(self, arr1, arr2):
-        
-        a1 = Atom.from_dtype(arr1)
-        a2 = Atom.from_dtype(arr2)
-            
-        if 'test_data1' not in self.HMB1_group:
-            self.test_array1 = self.fileh.create_earray(self.HMB1_group,
-                                         'test_data1', a1,
-                                         shape=(0, len(arr1)),
-                                         title='Features Tester',
-                                         expectedrows=20,
-                                         chunkshape=(self.c, len(arr1)))
-    
-            self.test_array2 = self.fileh.create_earray(self.HMB1_group,
-                                         'test_data2', a2,
-                                         shape=(0, len(arr2)),
-                                         title='Features Tester',
-                                         expectedrows=20,
-                                         chunkshape=(self.c, len(arr2)))
-        else:
-           self.test_array1 = self.root.HMB1_group.test_data1
-           self.test_array2 = self.root.HMB1_group.test_data2
-            
-        self.test_array1.append(arr1)
-        self.test_array2.append(arr2)
          
 
-def setup_table(f):
-    with fileh as  open_file('VGG16/{}.h5'.format(dataset), mode = 'w')
+class array_writer(object):
+    """
+    writes numpy array to .h5 file. Creates a dataset group, then 
+    a feature and label subgroup which stores each array named with their
+    original filename.
+    """
+    def __init__(self, fileh, dataset, sample):
+        root = fileh.root
+        a1 = Atom.from_dtype(sample[0].dtype)
+        a2 = Atom.from_dtype(sample[1].dtype)
+        batch, size = sample[0].shape
+        
+        if dataset not in fileh.root:
+            group = fileh.create_group(
+                    root, 
+                    name=dataset,
+                    title='{} dataset'.format(dataset))
+        else:
+            group = fileh.get_node(root, dataset)
+            
+        if 'features' not in group:
+            self.features = fileh.create_earray(
+                    where=group,
+                    name='features',
+                    atom=a1,
+                    shape=(0, size),
+                    title='feature dataset', 
+                    chunkshape=(batch, size))
+        else:
+            self.features = fileh.get_node(group, 'features')
+            
+        if 'labels' not in group:
+            self.labels = fileh.create_earray(
+                    where=group,
+                    name='labels',
+                    atom=a2,
+                    shape=(0,),
+                    title='label dataset',
+                    chunkshape=(batch,))                        
+        else:
+            self.labels = fileh.get_node(group, 'labels')
+            
+    def __call__(self, x, y):
+        self.features.append(x)
+        self.labels.append(y)
+            
+        
 if __name__ == "__main__":
     
-    batch_size = 2
-    # Create empty array
-    # features = np.zeros(shape=(sample_size, 153600))
-    # labels = np.zeros(shape=(sample_size))
+    t0 = time.time()
     
-    VGG = feature_generator(batch=batch_size, sample_size=10)
+    VGG = feature_generator(batch=1, sample_size=3)
     
-    i = 0
+    with open_file('VGG16/VGG16.h5', mode = 'w') as h5:
+
+        i = 0
+        for x, y in VGG:
+            if i > 4: break
+            if i == 0:
+                w = array_writer(h5, dataset='Test', sample=(x, y))
+            w(x, y)
+            
+            i += 1
+
     
-    # Store "x" in a chunked array...
-    # f = tables.openFile('VGG16/HMB_1.h5', 'w')
-    writer = array_writer(batch_size)
-#    for feature, label in VGG:
-#        writer(feature, label)
-        # np.savetxt('features.csv', feature)
-#        if 'features' in store:
-#            
-#            dfx.to_hdf('VGG16/HMB_1.h5', 'features', append=True)
-#            dfy.to_hdf('VGG16/HMB_1.h5', 'labels', append=True)
-#    
-#        else:
-#            store.append('features', dfx)
-#            store.append('labels', dfy)
-#        print('data stored')
-    # dfx.to_csv(outfile_features)
-    # dfy.to_csv(outfile_labels)
-    
-#    tfmodel = TransferModel()
-#    history = tfmodel.train()
-#    
-#    acc = history.history['acc']
-#    val_acc = history.history['val_acc']
-#    loss = history.history['loss']
-#    val_loss = history.history['val_loss']
-#    
-#    epochs = range(len(acc))
-#    
-#    plt.plot(epochs, acc, 'bo', label='Training Accuracy')
-#    plt.plot(epochs, val_acc, 'b', label='Validation Accuracy')
-#    plt.title('Training and Validation accuracy')
-#    plt.legend()
-#    plt.figure()
-#    
-#    plt.plot(epochs, loss, 'bo', label='Training loss')
-#    plt.plot(epochs, val_loss, 'b', label='Validation loss')
-#    plt.title('Training and Validation loss')
-#    plt.legend()
-#    
-#    plt.show()
