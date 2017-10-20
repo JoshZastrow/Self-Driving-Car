@@ -7,15 +7,124 @@ import numpy as np
 from scipy import misc
 import matplotlib.pyplot as plt
 import os
-import matplotlib.cbook as cbook
+from tables import Atom
+from keras.datasets import reuters
 
 plt.rcParams['figure.figsize'] = (20.0, 16.0) # set default size of plots
 plt.rcParams['image.interpolation'] = 'nearest'
 plt.rcParams['image.cmap'] = 'gray'
 
 
-def load_udacity_data(file_path='', img_dir='', batch=100, val_percent=.2,
-                    shuffle=False, rescale=True):
+class DataGenerator(ImageDataGenerator):
+    """
+    A data generator object that flows data from selected source.
+    Initializes with parameters from Keras ImageDataGenerator.
+    """
+    def __init__(self, *args, **kwargs):
+        ImageDataGenerator.__init__(self, *args, **kwargs)
+        self.iterator=None
+    
+    def from_csv(self, 
+                 csv_path=None,
+                 img_dir='', 
+                 batch_size=1, 
+                 target_size=(480, 640),
+                 col_headers=['angle']):
+        
+        assert os.path.isfile(csv_path), 'CSV Log file cannot be found'
+        assert os.path.isdir(img_dir), 'Image directory cannot be found'
+        
+        # CSV Stores labels and filepath to image
+        reader = pd.read_csv(csv_path, chunksize=batch_size)
+        
+        # Yield one set of images 
+        for batch in reader:
+            data = self.process_images(batch['filename'], target_size)
+            labels = np.array(batch[col_headers])
+            
+            yield data, labels
+
+    def process_images(self, dir_list, target_size, img_dir=None):
+        """
+        Loads images from file, performs image processing (if any)
+        
+        inputs
+        ------
+        dir_list: list of image file paths
+        target_size: desired size of images
+        
+        returns
+        -------
+        images: np array of images
+        """
+        
+        img_dir = '../Car/datasets/HMB_1/output/' if not img_dir else img_dir
+        dir_list = img_dir + dir_list
+        batch_size = len(dir_list)
+        
+        images = np.zeros(shape=(batch_size, *target_size, 3))
+        
+        for i, line in enumerate(dir_list):
+            get_image = misc.imread(line, mode='RGB')
+            
+            # TODO: Figure out how to use the image processing features
+            #       of the inherited DataGenerator on the loaded image
+            images[i] = get_image
+            
+        return images
+    
+
+class DataWriter(object):
+    """
+    writes numpy array to .h5 file. Creates a dataset group, then 
+    a feature and label subgroup which stores each array named with their
+    original filename.
+    """
+    def __init__(self, fileh, dataset, sample):
+        root = fileh.root
+        a1 = Atom.from_dtype(sample[0].dtype)  # feature data shape
+        a2 = Atom.from_dtype(sample[1].dtype)  # label data shape
+        batch, size = sample[0].shape
+        
+        if dataset not in fileh.root:
+            group = fileh.create_group(
+                    root, 
+                    name=dataset,
+                    title='{} dataset'.format(dataset))
+        else:
+            group = fileh.get_node(root, dataset)
+            
+        if 'features' not in group:
+            self.features = fileh.create_earray(
+                    where=group,
+                    name='features',
+                    atom=a1,
+                    shape=(0, size),
+                    title='feature dataset', 
+                    chunkshape=(batch, size))
+        else:
+            self.features = fileh.get_node(group, 'features')
+            
+        if 'labels' not in group:
+            self.labels = fileh.create_earray(
+                    where=group,
+                    name='labels',
+                    atom=a2,
+                    shape=(0,),
+                    title='label dataset',
+                    chunkshape=(batch,))                        
+        else:
+            self.labels = fileh.get_node(group, 'labels')
+            
+    def __call__(self, x, y):
+        self.features.append(x)
+        self.labels.append(y)
+        
+ 
+def load_udacity_data(file_path='', 
+                      img_dir='', 
+                      batch=100, val_percent=.2,
+                      shuffle=False, rescale=True):
     """
     loads in images as features, steering angle as label
 
@@ -108,7 +217,6 @@ def load_udacity_data(file_path='', img_dir='', batch=100, val_percent=.2,
     return data
 
 
-
 def load_commai_data(log_file, cam_file):
     """
     loads .h5 files from comma AI's car dataset.
@@ -144,76 +252,19 @@ def load_commai_data(log_file, cam_file):
     cam = cam_store.root.X[:]
 
     return log, cam
-
-
-class DataGenerator(ImageDataGenerator):
-    """
-    A data generator object that flows data from selected source.
-    Initializes with parameters from Keras ImageDataGenerator.
-    """
-    def __init__(self, *args, **kwargs):
-        ImageDataGenerator.__init__(self, *args, **kwargs)
-        self.iterator=None
-    
-    def from_csv(self, 
-                 csv_path=None,
-                 img_dir='', 
-                 batch_size=5, 
-                 target_size=(480, 640),
-                 col_headers='angle'):
-        
-        assert os.path.isfile(csv_path), 'CSV Log file cannot be found'
-        assert os.path.isdir(img_dir), 'Image directory cannot be found'
-        
-        # CSV Stores labels and filepath to image
-        reader = pd.read_csv(csv_path, chunksize=batch_size)
-        
-        # Yield one set of images 
-        for batch in reader:
-            data = process_images(batch['filename'], target_size)
-            labels = np.array(batch[col_headers])
-            
-            yield data, labels
-
-
-def process_images(dir_list, target_size, img_dir=None):
-    """
-    Loads images from file, performs image processing (if any)
-    
-    inputs
-    ------
-    dir_list: list of image file paths
-    target_size: desired size of images
-    
-    returns
-    -------
-    images: np array of images
-    """
-    
-    img_dir = '../Car/datasets/HMB_1/output/' if not img_dir else img_dir
-    dir_list = img_dir + dir_list
-    batch_size = len(dir_list)
-    
-    images = np.zeros(shape=(batch_size, *target_size, 3))
-    
-    for i, line in enumerate(dir_list):
-        get_image = misc.imread(line, mode='RGB')
-        images[i] = get_image
-        # .resize(*target_size, 3)
-        
-    return images
-    
+       
 if __name__ == "__main__":
     
     file_loc = '../Car/datasets/HMB_1/output/interpolated.csv'
     i = 0
         
     f = 1
-    reader = DataGenerator()
+    reader = DataGenerator(samplewise_center=True)
     reader = reader.from_csv(csv_path=file_loc,
                              img_dir='../Car/datasets/HMB_1/output/',
                              batch_size=30)
     c = 5
+    print('Data Utilities, reading sample images from HMB_1 datastet..\n\n')
     for chunk in reader:
         if f > c: break
         f += 1
