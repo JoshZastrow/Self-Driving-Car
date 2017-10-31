@@ -5,3 +5,5 @@ cat.png
 earray1.h5
 features.csv
 googlenet_weights.h5
+InceptionV3/
+config.ini
