@@ -6,14 +6,12 @@ import pandas as pd
 import numpy as np
 from scipy import misc
 import matplotlib.pyplot as plt
-import os
+import os, math, time
 from tables import Atom
-from keras.datasets import reuters
 
 plt.rcParams['figure.figsize'] = (20.0, 16.0) # set default size of plots
 plt.rcParams['image.interpolation'] = 'nearest'
 plt.rcParams['image.cmap'] = 'gray'
-
 
 class DataGenerator(ImageDataGenerator):
     """
@@ -25,17 +23,20 @@ class DataGenerator(ImageDataGenerator):
         self.iterator=None
     
     def from_csv(self, 
-                 csv_path=None,
-                 img_dir='', 
-                 batch_size=1, 
+                 csv_path,
+                 img_dir, 
+                 batch_size, 
                  target_size=(480, 640),
-                 col_headers=['angle']):
-        
+                 col_headers=['angle'],
+                 starting_row=0):
+
         assert os.path.isfile(csv_path), 'CSV Log file cannot be found'
         assert os.path.isdir(img_dir), 'Image directory cannot be found'
         
         # CSV Stores labels and filepath to image
-        reader = pd.read_csv(csv_path, chunksize=batch_size)
+        reader = pd.read_csv(csv_path, 
+                             chunksize=batch_size, 
+                             skiprows=starting_row)
         
         # Yield one set of images 
         for batch in reader:
@@ -110,9 +111,9 @@ class DataWriter(object):
                     where=group,
                     name='labels',
                     atom=a2,
-                    shape=(0,),
+                    shape=(0, 1),
                     title='label dataset',
-                    chunkshape=(batch,))                        
+                    chunkshape=(batch, 1))                        
         else:
             self.labels = fileh.get_node(group, 'labels')
             
@@ -283,3 +284,8 @@ if __name__ == "__main__":
             plt.title = 'Steering Angle {}: {}'.format(i, chunk[1][i])
             plt.axis('off')
         plt.show()
+
+def stopwatch(start, comment):
+    lap = math.floor(time.time() - start)
+    print('{}: {}:{} sec'.format(comment, lap // 60, lap % 60))
+    
