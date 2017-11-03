@@ -1,9 +1,8 @@
-Inception/
-VGG16/
+Transfer-Learning/InceptionV3/
+Transfer-Learning/VGG16/
 __pycache__/
 cat.png
 earray1.h5
 features.csv
-googlenet_weights.h5
-InceptionV3/
 config.ini
+Transfer-Learning/output
