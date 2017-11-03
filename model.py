@@ -167,7 +167,7 @@ if __name__ == "__main__":
     
     stopwatch(start, 'Model and data loader generated, opening the files')  
     
-    with open_file(args.output, mode = 'w') as h5:
+    with open_file(args.output, mode = 'a') as h5:
         first = True
         i = 0  # row counter
         stopwatch(start, 'starting feature extraction...')
