@@ -36,11 +36,12 @@ class DataGenerator(ImageDataGenerator):
         # CSV Stores labels and filepath to image
         reader = pd.read_csv(csv_path, 
                              chunksize=batch_size, 
-                             skiprows=starting_row)
+                             header=0,
+                             skiprows=range(1, starting_row))
         
         # Yield one set of images 
         for batch in reader:
-            data = self.process_images(batch['filename'], target_size)
+            data = self.process_images(batch.filename, target_size)
             labels = np.array(batch[col_headers])
             
             yield data, labels
@@ -59,7 +60,7 @@ class DataGenerator(ImageDataGenerator):
         images: np array of images
         """
         
-        img_dir = '../Car/datasets/HMB_1/output/' if not img_dir else img_dir
+        img_dir = 'output/' if not img_dir else img_dir
         dir_list = img_dir + dir_list
         batch_size = len(dir_list)
         
@@ -256,14 +257,15 @@ def load_commai_data(log_file, cam_file):
        
 if __name__ == "__main__":
     
-    file_loc = '../Car/datasets/HMB_1/output/interpolated.csv'
+    file_loc = 'output/interpolated.csv'
     i = 0
         
     f = 1
     reader = DataGenerator(samplewise_center=True)
-    reader = reader.from_csv(csv_path=file_loc,
-                             img_dir='../Car/datasets/HMB_1/output/',
-                             batch_size=30)
+    reader = reader.from_csv(csv_path='output/interpolated.csv',
+                             img_dir='output/',
+                             batch_size=5,
+                             starting_row=1000)
     c = 5
     print('Data Utilities, reading sample images from HMB_1 datastet..\n\n')
     for chunk in reader:
