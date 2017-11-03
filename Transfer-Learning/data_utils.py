@@ -27,7 +27,7 @@ class DataGenerator(ImageDataGenerator):
                  img_dir, 
                  batch_size, 
                  target_size=(480, 640),
-                 col_headers=['angle'],
+                 col_headers=['angle', 'torque', 'speed'],
                  starting_row=0):
 
         assert os.path.isfile(csv_path), 'CSV Log file cannot be found'
@@ -42,8 +42,7 @@ class DataGenerator(ImageDataGenerator):
         # Yield one set of images 
         for batch in reader:
             data = self.process_images(batch.filename, target_size)
-            labels = np.array(batch[col_headers])
-            
+            labels = batch[col_headers]
             yield data, labels
 
     def process_images(self, dir_list, target_size, img_dir=None):
@@ -256,17 +255,17 @@ def load_commai_data(log_file, cam_file):
     return log, cam
        
 if __name__ == "__main__":
-    
+    import random
     file_loc = 'output/interpolated.csv'
     i = 0
-        
-    f = 1
+    f = 1  # counter for sample size
+    
     reader = DataGenerator(samplewise_center=True)
     reader = reader.from_csv(csv_path='output/interpolated.csv',
                              img_dir='output/',
                              batch_size=5,
-                             starting_row=1000)
-    c = 5
+                             starting_row=random.randint(1,10000))
+    c = 5  # number of columns to use to plot images
     print('Data Utilities, reading sample images from HMB_1 datastet..\n\n')
     for chunk in reader:
         if f > c: break
@@ -275,7 +274,7 @@ if __name__ == "__main__":
         j = 0
         
         for axis in ax:        
-            axis.set_title(chunk[1][j])
+            axis.set_title(chunk[1].angle.name)
             axis.imshow(np.uint8(chunk[0][j]))
             axis.axis('off')
             j += 1
@@ -283,7 +282,6 @@ if __name__ == "__main__":
         for i in range(c):
             plt.subplot('15{}'.format(i + 1))
             plt.imshow(np.uint8(chunk[0][i]))
-            plt.title = 'Steering Angle {}: {}'.format(i, chunk[1][i])
             plt.axis('off')
         plt.show()
 
