@@ -1,69 +1,84 @@
 from __future__ import absolute_import
 from __future__ import print_function
 
-from keras.preprocessing.image import ImageDataGenerator
+# from keras.preprocessing.image import ImageDataGenerator
 import pandas as pd
 import numpy as np
 from scipy import misc
 import matplotlib.pyplot as plt
 import os, math, time
-from tables import Atom, open_file
+from tables import open_file
+import csv
 
 plt.rcParams['figure.figsize'] = (20.0, 16.0) # set default size of plots
 plt.rcParams['image.interpolation'] = 'nearest'
 plt.rcParams['image.cmap'] = 'gray'
 
-class DataGenerator(ImageDataGenerator):
+class DataGenerator():
     """
     A data generator object that flows data from selected source.
-    Initializes with parameters from Keras ImageDataGenerator.
+
     """
-    def __init__(self, *args, **kwargs):
-        ImageDataGenerator.__init__(self, *args, **kwargs)
-        self.iterator=None
-    
-    def from_csv(self, 
-                 csv_path,
-                 img_dir, 
-                 batch_size, 
-                 target_size=(480, 640),
-                 include_columns=['angle', 'torque', 'speed'],
-                 starting_row=0):
-
-        assert os.path.isfile(csv_path), 'CSV Log file cannot be found'
-        assert os.path.isdir(img_dir), 'Image directory cannot be found'
+    def __init__(self, log_file, img_dir, 
+                 batch_size=2, sample_size=10,
+                 file_type='csv',
+                 target_size=(480, 640), starting_row=0):
+        """
+        args
+        ----
+            log_file: <str> path to the log file
+            img_dir: <str> path to the image directory
+            batch size: <int> how many samples to generate each time
+            sample_size: <int> how many total samples to generate
+            file_type: ['csv', 'h5'] log file type (.h5 not implemented)
+        """        
+        self.target_size = target_size
+        self.batch_size = batch_size
+        self.sample_size = sample_size
+        self.img_dir = img_dir
         
-        # CSV Stores labels and filepath to image
-        reader = pd.read_csv(csv_path, 
-                             chunksize=batch_size, 
-                             header=0,
-                             skiprows=range(1, starting_row))
+        assert file_type == 'csv', 'Only csv file type has been implemented'
         
-        # Yield one set of images 
-        for batch in reader:
-            data = self.process_images(batch.filename, target_size)
-            labels = batch[include_columns]
-            yield data, labels
+        # Limit sample size to number of rows in log file
+        with open(log_file,"r") as f:
+                log = csv.reader(f,delimiter = ",")
+                log = list(log)
+                row = len(log)
+                if row > self.sample_size:
+                    print('Sample size larger than available data. '
+                          'Setting sample size to {}'.format(row))
+                    self.sample_size = row - 1
+                    
+        if file_type == 'csv':
+            self.reader = pd.read_csv(log_file, 
+                                      chunksize=batch_size, 
+                                      header=0,
+                                      skiprows=range(1, starting_row))
+            
+    def __iter__(self):
+        for _ in range(0, self.sample_size, self.batch_size):
+            batch = self.reader.get_chunk()
+            images = self._process_images(batch.filename)
+            yield images, batch
+        
 
-    def process_images(self, dir_list, target_size, img_dir=None):
+    def _process_images(self, dir_list):
         """
         Loads images from file, performs image processing (if any)
         
         inputs
         ------
-        dir_list: list of image file paths
-        target_size: desired size of images
+            dir_list: list of image file paths
         
         returns
         -------
-        images: np array of images
+            images: np array of images
         """
         
-        img_dir = 'output/' if not img_dir else img_dir
-        dir_list = img_dir + dir_list
-        batch_size = len(dir_list)
+        dir_list = self.img_dir + dir_list
+        assert os.path.isfile(dir_list[0]), '{} not found'.format(dir_list)
         
-        images = np.zeros(shape=(batch_size, *target_size, 3))
+        images = np.zeros(shape=(self.batch_size, *self.target_size, 3))
         
         for i, line in enumerate(dir_list):
             get_image = misc.imread(line, mode='RGB')
@@ -81,49 +96,30 @@ class DataWriter(object):
     """
     writes numpy array to .h5 file. Creates a dataset group within root, then 
     a feature and label subgroup. 
-    
-    
+    args
+    ----
+    fileh: <str> filepath of the .h5 file
+    dataset: <str> dataset name (name of model used to process data)
     """
-    def __init__(self, fileh, dataset, sample):
-        root = fileh.root
-        print(sample[0].shape)
-        a1 = Atom.from_dtype(sample[0].dtype)  # feature data shape
-        # a2 = Atom.from_dtype()  # label data shape
-        batch, size = sample[0].shape
+    def __init__(self, fileh, dataset):
+        self.fileh = fileh
+        self.group = dataset
         
-        if dataset not in fileh.root:
-            group = fileh.create_group(
-                    root, 
-                    name=dataset,
-                    title='{} dataset'.format(dataset))
-        else:
-            group = fileh.get_node(root, dataset)
-            
-        if 'features' not in group:
-            self.features = fileh.create_earray(
-                    where=group,
-                    name='features',
-                    atom=a1,
-                    shape=(0, size),
-                    title='feature dataset', 
-                    chunkshape=(batch, size))
-        else:
-            self.features = fileh.get_node(group, 'features')
-            
-        if 'labels' not in group:
-            self.labels = fileh.create_earray(
-                    where=group,
-                    name='labels',
-                    # atom=a2,
-                    shape=(0, 1),
-                    title='label dataset',
-                    chunkshape=(batch, 1))                        
-        else:
-            self.labels = fileh.get_node(group, 'labels')
-            
+        with pd.HDFStore(self.fileh) as hdf:
+            if dataset not in hdf:
+                for table in ['features', 'labels']:
+                    hdf.put('test/' + table, pd.DataFrame(), format='table')
+#                    
+                
     def __call__(self, x, y):
-        self.features.append(x)
-        self.labels.append(y)
+        
+        with pd.HDFStore(self.fileh) as hdf:
+            hdf.append('{}/features'.format(self.group), 
+                       x,
+                       format='table')
+            hdf.append('{}/labels'.format(self.group), 
+                       y,
+                       format='table')
         
  
 def load_udacity_data(file_path='', 
@@ -268,7 +264,7 @@ if __name__ == "__main__":
     first = True
     
     reader = DataGenerator(samplewise_center=True)
-    reader = reader.from_csv(csv_path='output/interpolated.csv',
+    reader = reader.from_csv(log_file='output/interpolated.csv',
                              img_dir='output/',
                              batch_size=5,
                              starting_row=random.randint(1,10000))
