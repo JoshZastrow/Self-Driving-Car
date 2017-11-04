@@ -7,7 +7,7 @@ import numpy as np
 from scipy import misc
 import matplotlib.pyplot as plt
 import os, math, time
-from tables import Atom
+from tables import Atom, open_file
 
 plt.rcParams['figure.figsize'] = (20.0, 16.0) # set default size of plots
 plt.rcParams['image.interpolation'] = 'nearest'
@@ -27,7 +27,7 @@ class DataGenerator(ImageDataGenerator):
                  img_dir, 
                  batch_size, 
                  target_size=(480, 640),
-                 col_headers=['angle', 'torque', 'speed'],
+                 include_columns=['angle', 'torque', 'speed'],
                  starting_row=0):
 
         assert os.path.isfile(csv_path), 'CSV Log file cannot be found'
@@ -42,7 +42,7 @@ class DataGenerator(ImageDataGenerator):
         # Yield one set of images 
         for batch in reader:
             data = self.process_images(batch.filename, target_size)
-            labels = batch[col_headers]
+            labels = batch[include_columns]
             yield data, labels
 
     def process_images(self, dir_list, target_size, img_dir=None):
@@ -68,6 +68,8 @@ class DataGenerator(ImageDataGenerator):
         for i, line in enumerate(dir_list):
             get_image = misc.imread(line, mode='RGB')
             
+            # TODO: Resize image to target size
+            
             # TODO: Figure out how to use the image processing features
             #       of the inherited DataGenerator on the loaded image
             images[i] = get_image
@@ -77,14 +79,16 @@ class DataGenerator(ImageDataGenerator):
 
 class DataWriter(object):
     """
-    writes numpy array to .h5 file. Creates a dataset group, then 
-    a feature and label subgroup which stores each array named with their
-    original filename.
+    writes numpy array to .h5 file. Creates a dataset group within root, then 
+    a feature and label subgroup. 
+    
+    
     """
     def __init__(self, fileh, dataset, sample):
         root = fileh.root
+        print(sample[0].shape)
         a1 = Atom.from_dtype(sample[0].dtype)  # feature data shape
-        a2 = Atom.from_dtype(sample[1].dtype)  # label data shape
+        # a2 = Atom.from_dtype()  # label data shape
         batch, size = sample[0].shape
         
         if dataset not in fileh.root:
@@ -110,7 +114,7 @@ class DataWriter(object):
             self.labels = fileh.create_earray(
                     where=group,
                     name='labels',
-                    atom=a2,
+                    # atom=a2,
                     shape=(0, 1),
                     title='label dataset',
                     chunkshape=(batch, 1))                        
@@ -256,9 +260,12 @@ def load_commai_data(log_file, cam_file):
        
 if __name__ == "__main__":
     import random
-    file_loc = 'output/interpolated.csv'
+    
+    print('Data Utilities, reading sample images from HMB_1 datastet..\n\n')
+    
     i = 0
     f = 1  # counter for sample size
+    first = True
     
     reader = DataGenerator(samplewise_center=True)
     reader = reader.from_csv(csv_path='output/interpolated.csv',
@@ -266,24 +273,37 @@ if __name__ == "__main__":
                              batch_size=5,
                              starting_row=random.randint(1,10000))
     c = 5  # number of columns to use to plot images
-    print('Data Utilities, reading sample images from HMB_1 datastet..\n\n')
-    for chunk in reader:
-        if f > c: break
-        f += 1
-        fig, ax = plt.subplots(nrows=1, ncols=c, sharex=True, squeeze=True)
-        j = 0
-        
-        for axis in ax:        
-            axis.set_title(chunk[1].angle.name)
-            axis.imshow(np.uint8(chunk[0][j]))
-            axis.axis('off')
-            j += 1
-            
-        for i in range(c):
-            plt.subplot('15{}'.format(i + 1))
-            plt.imshow(np.uint8(chunk[0][i]))
-            plt.axis('off')
-        plt.show()
+    
+    with open_file('InceptionV3/InceptionV3.h5', mode = 'a') as h5:
+        for chunk in reader:
+            if f > c: break
+            f += 1
+            fig, ax = plt.subplots(nrows=1, 
+                                   ncols=c, 
+                                   sharex=True, 
+                                   squeeze=True)
+            j = 0
+      
+            if first: # First loop, create data writer object
+                store = DataWriter(h5, 
+                                   dataset='test', 
+                                   sample=(chunk[0], chunk[1]))
+                
+            store(chunk[0], chunk[1])
+                
+            if not first: continue
+            first = False        
+            for axis in ax:        
+                axis.set_title(chunk[1].angle.name)
+                axis.imshow(np.uint8(chunk[0][j]))
+                axis.axis('off')
+                j += 1
+                
+            for i in range(c):
+                plt.subplot('15{}'.format(i + 1))
+                plt.imshow(np.uint8(chunk[0][i]))
+                plt.axis('off')
+            plt.show()
 
 def stopwatch(start, comment):
     lap = math.floor(time.time() - start)

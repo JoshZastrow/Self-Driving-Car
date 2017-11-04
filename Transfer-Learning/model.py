@@ -77,6 +77,7 @@ def feature_generator(batch=30, sample_size=None,
         if not sample_size or sample_size > row:
             sample_size = row
             
+    # Create the data generator
     stopwatch(start, ('\n\nInitializing data generator...'))
     data = DataGenerator() 
     data = data.from_csv(csv_path=csv_file,
@@ -85,19 +86,15 @@ def feature_generator(batch=30, sample_size=None,
                          starting_row=start_on_row)
      
     i = 0
-    stopwatch(start, '\nPerforming Feature Extraction:\n')
+    stopwatch(start, '\nPerforming Feature Extraction...')
     
     for inputs, y in data:
         feature_batch = model.predict(inputs)
-
-        print('\tbatch {} through {} complete'
-              .format(i, i + batch))
-
         yield feature_batch, y
         
         i += batch
         if i >= sample_size: break
-    
+        if i % 5 == 0: print('\t{} samples completed'.format(i * batch))    
 
 class RegressionModel():
     """
