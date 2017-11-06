@@ -18,24 +18,10 @@ def create_parser():
                                                  'state of the art ML model '
                                                  'for feature extraction')
     
-    parser.add_argument('-log', metavar='csv_file', type=str, nargs='?',
-                        required=True,
-                        help='A file path to the CSV log file holding the '
-                             'sensor data.\n Example: data/interpolated.csv')
-    
-    parser.add_argument('-img_dir', type=str, nargs='?',
-                        required=True,
-                        help='path to the directory containing the image folders'
-                             '\n\nNOTE: This directory should have the center,'
-                             ' left, and right image subfolders as referenced'
-                             ' in the log file. This directory will be the'
-                             ' base path for the image file paths listed'
-                             ' in the log file. Example: data/images')
-    
     parser.add_argument('-model', type=str, nargs='?',
                         required=False,
                         help='the model you would like to use for feature'
-                             ' extraction. Current options are:'
+                             ' extraction. Current options:'
                              '\t-InceptionV3\n'
                              '\t-VGG16\n'
                              '\t-ResNet50\n'
@@ -44,9 +30,9 @@ def create_parser():
     
     parser.add_argument('-output', type=str, nargs='?',
                         required=True,
-                        help='Output file path. Must be an .h5 file'
+                        help='Output folder. Model name will be added'
                              '\n\nExample:\n\t'
-                             'outputs/InceptionV3.h5')
+                             'output/extracted-features')
     
     return parser
 
@@ -55,50 +41,35 @@ if __name__ == '__main__':
     
     config = configparser.ConfigParser()
     
+    inputs = {
+            'image dir': input('<str> Enter base directory path to image folder --> '),
+            'log file path': input('<str> Enter file path to log file -->'),
+            'batch size': input('<int> Enter number of images to read per batch process --> '),
+            'sample size': input('<int> Enter total number of images to process --> '),
+            'frame height': input('<int> Enter frame height of image sample --> '),
+            'frame width': input('<int> Enter frame width of image sample -->'),
+            'starting row': input('<int> Enter a sample index to skip to (default is 0) -->'),
+            'output type': input('<str> Enter either hdf or folder for storage option-->')           
+            }
+    
     config['DEFAULT'] = {
+            'image dir': 'output',
+            'log file path': 'output/interpolated.csv',
             'batch size': 5,
             'sample size': 20,
             'frame height': 480,
             'frame width': 640,
             'starting row': 0,
+            'output type': 'folder'
             } 
     
-    config['USER'] = {}
+    config['USER'] = {}   
     
-    batch = input('<int> Enter number of images to read per batch process --> ')
-    sample_size = input('<int> Enter total number of images to process --> ')
-    starting_row = input('<int> Enter row of log file to start on (Default is 0) --> ')
+    for key, val in inputs.items():
+        if val:
+            config['USER'][key] = val
+        else:
+            config['USER'][key] = config['DEFAULT'][key]
     
-    print('\nThe following configurations are optional, press enter to skip.'
-          '\nThe default frame size is 480 x 640\n')
-    
-    frame_height = input('<int> Enter frame height of image sample --> ')
-    frame_width = input('<int> Enter frame width of image sample -->')
-    
-    if batch:
-        config['USER']['batch size'] = batch
-    else:
-        config['USER']['batch size'] = config['DEFAULT']['batch size']
-        
-    if sample_size:
-        config['USER']['sample size'] = sample_size
-    else:
-        config['USER']['sample size'] = config['DEFAULT']['sample size'] 
-        
-    if starting_row:
-        config['USER']['starting row'] = starting_row
-    else:
-        config['USER']['starting row'] = config['DEFAULT']['starting row']
- 
-    if frame_height:
-        config['USER']['frame height'] = frame_height
-    else:
-        config['USER']['frame height'] = config['DEFAULT']['frame height']  
-             
-    if frame_width:
-        config['USER']['frame width'] = frame_width
-    else:
-        config['USER']['frame width'] = config['DEFAULT']['frame width']
-             
     with open('config.ini', 'w') as configfile:
             config.write(configfile)
