@@ -4,13 +4,13 @@ from config import get_user_settings, create_parser
 from keras import optimizers
 from keras.layers import Dense, Dropout, Flatten, MaxPooling2D
 from keras.models import Sequential
-import os, sys, traceback
+import sys, traceback
 import keras.applications
 
 # If I go for random sampling... which I don't at the moment.
 np.random.seed(7)
         
-class feature_generator():
+class FeatureGenerator():
     """
     Transfer Learning model.
     Convolutional Base Model Architecture, top layers (classifier) removed
@@ -27,7 +27,7 @@ class feature_generator():
     
     """
     def __init__(self, model):
-        conv_base = getattr(keras.applications, args.model)(
+        conv_base = getattr(keras.applications, model)(
                 include_top=False, 
                 weights='imagenet', 
                 input_shape=(480, 640, 3)) 
@@ -35,7 +35,6 @@ class feature_generator():
         self.model = Sequential()
         self.model.add(conv_base)
         self.model.add(MaxPooling2D(pool_size=(2, 2)))
-        self.model.add(Flatten())
         
     def predict(self, inputs):
         return self.model.predict(inputs)
@@ -80,35 +79,29 @@ class RegressionModel():
             
 def module_argument_checker(args):
     model_options = ['InceptionV3', 'VGG16', 'Xception', 'ResNet50']
-    assert os.path.isfile(args.log), 'Cannot find log file from input path'
-    assert os.path.isfile(args.output), 'output file does not exist'
-    assert os.path.isdir(args.img_dir), 'image diretory cannot be found'
     assert args.model in model_options, 'input model is not an option'  
     
-    
+
 if __name__ == "__main__":
     import time
     start = time.time()
     
     # Get model settings from config file
-    config = get_user_settings()
-    batch_size = int(config['USER'].get('batch size', 5))
-    sample_size = int(config['USER'].get('sample size', 30))
-    starting_row = int(config['USER'].get('starting row', 0))
+    config = get_user_settings()['USER']
     
     # get input informatin for data pipeline
     parser = create_parser()
     args = parser.parse_args()
     module_argument_checker(args)
 
-    stopwatch(start, 'creating data generator')
-    dfeed = DataGenerator(args.log, args.img_dir,
-                          batch_size=batch_size, sample_size=sample_size,
-                          starting_row=starting_row)
-
-    stopwatch(start, 'creating model')    
-    model = feature_generator(args.model)
-    
+    stopwatch(start, 'creating model and data generator')
+    dfeed = DataGenerator(log_file=config['log file path'],
+                          img_dir=config['image dir'],
+                          batch_size=int(config['batch size']), 
+                          sample_size=int(config['sample size']),
+                          starting_row=int(config['starting row']))
+   
+    model = FeatureGenerator(args.model)
     store = DataWriter(args.output, args.model)
     i = 0
     
@@ -117,7 +110,7 @@ if __name__ == "__main__":
         try:
             features = model.predict(imgs)
             store(features, labels)
-            i += batch_size
+            i += int(config['batch size'])
             stopwatch(start, 'data stored, next batch')     
             
         # If ctrl + c out of the data writer, store the row location
