@@ -7,7 +7,6 @@ import numpy as np
 from scipy import misc
 import matplotlib.pyplot as plt
 import os, math, time
-from tables import open_file
 import csv
 
 plt.rcParams['figure.figsize'] = (20.0, 16.0) # set default size of plots
@@ -17,7 +16,6 @@ plt.rcParams['image.cmap'] = 'gray'
 class DataGenerator():
     """
     A data generator object that flows data from selected source.
-
     """
     def __init__(self, log_file, img_dir, 
                  batch_size=2, sample_size=10,
@@ -37,13 +35,11 @@ class DataGenerator():
         self.sample_size = sample_size
         self.img_dir = img_dir
         
-        assert file_type == 'csv', 'Only csv file type has been implemented'
-        
-        # Limit sample size to number of rows in log file
+        # check sample size against log row count
         with open(log_file,"r") as f:
-                log = csv.reader(f,delimiter = ",")
-                log = list(log)
+                log = [csv.reader(f,delimiter = ",")]
                 row = len(log)
+                
                 if row > self.sample_size:
                     print('Sample size larger than available data. '
                           'Setting sample size to {}'.format(row))
@@ -54,6 +50,8 @@ class DataGenerator():
                                       chunksize=batch_size, 
                                       header=0,
                                       skiprows=range(1, starting_row))
+        else:
+            raise ValueError('file type not implemented')
             
     def __iter__(self):
         for _ in range(0, self.sample_size, self.batch_size):
@@ -75,8 +73,8 @@ class DataGenerator():
             images: np array of images
         """
         
-        dir_list = self.img_dir + dir_list
-        assert os.path.isfile(dir_list[0]), '{} not found'.format(dir_list)
+        dir_list = ['/'.join([self.img_dir, fpath]) for fpath in dir_list]
+        assert os.path.isfile(dir_list[0])
         
         images = np.zeros(shape=(self.batch_size, *self.target_size, 3))
         
@@ -98,30 +96,44 @@ class DataWriter(object):
     a feature and label subgroup. 
     args
     ----
-    fileh: <str> filepath of the .h5 file
+    folder: <str> filepath of the .h5 file
     dataset: <str> dataset name (name of model used to process data)
     """
-    def __init__(self, fileh, dataset):
-        self.fileh = fileh
-        self.group = dataset
+    def __init__(self, output_dir, name, output_type='folder'):        
         
-        with pd.HDFStore(self.fileh) as hdf:
-            if dataset not in hdf:
-                for table in ['features', 'labels']:
-                    hdf.put('test/' + table, pd.DataFrame(), format='table')
-#                    
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+            
+        self.type = output_type    
+        self.path = '/'.join([output_dir, name])
+
+        # Create subfolders
+        if self.type == 'hdf':
+            self.path = self.path + '.h5'
+            
+        elif self.type == 'folder':
+            for camera_view in ['left', 'center', 'right']:
+                sub_folder = '/'.join([self.path, camera_view])
                 
+                if not os.path.exists(sub_folder):
+                    os.makedirs(sub_folder)       
+              
+        else:
+            raise ValueError("output type must be either <hdf> or <folder>")
+            
     def __call__(self, x, y):
         
-        with pd.HDFStore(self.fileh) as hdf:
-            hdf.append('{}/features'.format(self.group), 
-                       x,
-                       format='table')
-            hdf.append('{}/labels'.format(self.group), 
-                       y,
-                       format='table')
-        
- 
+        if self.type == 'hdf':
+            with pd.HDFStore(self.path) as hdf:
+                for i, file in enumerate(y.filename):
+                    hdf.put(file, x[i])
+
+        else:
+            for i, file in enumerate(y.filename):
+                path = '/'.join([self.path, file])[:-4]
+                np.save(path, x[i], allow_pickle=False)
+         
+            
 def load_udacity_data(file_path='', 
                       img_dir='', 
                       batch=100, val_percent=.2,
@@ -255,51 +267,26 @@ def load_commai_data(log_file, cam_file):
     return log, cam
        
 if __name__ == "__main__":
-    import random
+    from config import get_user_settings
     
-    print('Data Utilities, reading sample images from HMB_1 datastet..\n\n')
+    # Get model settings from config file
+    config = get_user_settings()['USER']
     
-    i = 0
-    f = 1  # counter for sample size
-    first = True
+    dfeed = DataGenerator(log_file=config['log file path'],
+                          img_dir=config['image dir'],
+                          batch_size=int(config['batch size']), 
+                          sample_size=100,
+                          starting_row=int(config['starting row']))
     
-    reader = DataGenerator(samplewise_center=True)
-    reader = reader.from_csv(log_file='output/interpolated.csv',
-                             img_dir='output/',
-                             batch_size=5,
-                             starting_row=random.randint(1,10000))
-    c = 5  # number of columns to use to plot images
+    store = DataWriter('data-utils-output', 'sample_data')
     
-    with open_file('InceptionV3/InceptionV3.h5', mode = 'a') as h5:
-        for chunk in reader:
-            if f > c: break
-            f += 1
-            fig, ax = plt.subplots(nrows=1, 
-                                   ncols=c, 
-                                   sharex=True, 
-                                   squeeze=True)
-            j = 0
-      
-            if first: # First loop, create data writer object
-                store = DataWriter(h5, 
-                                   dataset='test', 
-                                   sample=(chunk[0], chunk[1]))
-                
-            store(chunk[0], chunk[1])
-                
-            if not first: continue
-            first = False        
-            for axis in ax:        
-                axis.set_title(chunk[1].angle.name)
-                axis.imshow(np.uint8(chunk[0][j]))
-                axis.axis('off')
-                j += 1
-                
-            for i in range(c):
-                plt.subplot('15{}'.format(i + 1))
-                plt.imshow(np.uint8(chunk[0][i]))
-                plt.axis('off')
-            plt.show()
+    for imgs, labels in dfeed:    
+        
+        for i in range(imgs.shape[0]):
+            for c in range(imgs.shape[3]):
+                imgs[i,:,:,c] = imgs[i,:,:,c] / np.max(imgs[i,:,:,c])
+            
+        store(imgs, labels)
 
 def stopwatch(start, comment):
     lap = math.floor(time.time() - start)
