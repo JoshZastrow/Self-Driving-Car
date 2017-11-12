@@ -19,7 +19,7 @@ class DataGenerator():
     """
     def __init__(self, log_file, img_dir, 
                  batch_size=2, sample_size=10,
-                 file_type='csv',
+                 file_type='csv', img_ext = '.png',
                  target_size=(480, 640), starting_row=0):
         """
         args
@@ -34,6 +34,7 @@ class DataGenerator():
         self.batch_size = batch_size
         self.sample_size = sample_size
         self.img_dir = img_dir
+        self.img_ext = img_ext
         
         # check sample size against log row count
         with open(log_file,"r") as f:
@@ -56,11 +57,17 @@ class DataGenerator():
     def __iter__(self):
         for _ in range(0, self.sample_size, self.batch_size):
             batch = self.reader.get_chunk()
-            images = self._process_images(batch.filename)
+            images = self._process_images(batch.filename, self.img_ext)
+
             yield images, batch
         
+    def __next__(self):
+        batch = self.reader.get_chunk()
+        images = self._process_images(batch.filename, self.img_ext)
+        return images, batch
+    
 
-    def _process_images(self, dir_list):
+    def _process_images(self, dir_list, ext):
         """
         Loads images from file, performs image processing (if any)
         
@@ -72,22 +79,24 @@ class DataGenerator():
         -------
             images: np array of images
         """
-        
-        dir_list = ['/'.join([self.img_dir, fpath]) for fpath in dir_list]
-        assert os.path.isfile(dir_list[0])
-        
-        images = np.zeros(shape=(self.batch_size, *self.target_size, 3))
+           
+        images = []  # np.zeros(shape=(self.batch_size, *self.target_size, 3))
         
         for i, line in enumerate(dir_list):
-            get_image = misc.imread(line, mode='RGB')
-            
+            full_path = '/'.join([self.img_dir, line])
+            full_path = os.path.splitext(full_path)[0] + ext
+
+            if ext == '.npy':
+                images.append(np.load(full_path))
+            else:
+                images.append(misc.imread(full_path, mode='RGB'))
+
             # TODO: Resize image to target size
-            
             # TODO: Figure out how to use the image processing features
             #       of the inherited DataGenerator on the loaded image
-            images[i] = get_image
-            
-        return images
+
+            result = np.array(images)
+        return result
     
 
 class DataWriter(object):
@@ -290,5 +299,5 @@ if __name__ == "__main__":
 
 def stopwatch(start, comment):
     lap = math.floor(time.time() - start)
-    print('{}: {}:{} sec'.format(comment, lap // 60, lap % 60))
+    print('{}: {} min {} sec'.format(comment, lap // 60, lap % 60))
     
